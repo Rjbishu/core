@@ -1,6 +1,7 @@
 Change: Update PHP dependencies
 
 The following have been updated:
+- doctrine/dbal (2.10.4 => 2.13.0)
 - egulias/email-validator (3.1.0 to 3.1.1)
 - icewind/streams (0.7.3 to 0.7.4)
 - pear/pear_exception (v1.0.1 to v1.0.2)
@@ -15,4 +16,5 @@ The following have been updated in files_external/3rdparty:
 
 https://github.com/owncloud/core/pull/38524
 https://github.com/owncloud/core/pull/38598
+https://github.com/owncloud/core/pull/38604
 https://github.com/owncloud/core/pull/38620
