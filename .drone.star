@@ -1346,6 +1346,8 @@ def acceptance(ctx):
 		'includeKeyInMatrixName': False,
 		'runAllSuites': False,
 		'numberOfParts': 1,
+		'testAgainstCoreTarball': False,
+		'coreTarball': 'daily-master-qa',
 	}
 
 	if 'defaults' in config:
@@ -1469,6 +1471,11 @@ def acceptance(ctx):
 									# Those commands need to be executed as www-data (which owns the files)
 									suExecCommand = 'su-exec www-data '
 
+								if params['testAgainstCoreTarball']:
+									pathOfServerUnderTest = '/drone/core'
+								else:
+									pathOfServerUnderTest = '/drone/src'
+
 								if (needObjectStore):
 									environment['OC_TEST_ON_OBJECTSTORE'] = '1'
 									if (params['cephS3'] != False):
@@ -1491,16 +1498,20 @@ def acceptance(ctx):
 										composerInstall(phpVersion) +
 										vendorbinBehat() +
 										yarnInstall(phpVersion) +
-										installServer(phpVersion, db, params['logLevel'], params['useHttps'], params['federatedServerNeeded'], params['proxyNeeded']) +
+										((
+											installCoreFromTarball(params['coreTarball'], db, params['logLevel'], params['useHttps'], params['federatedServerNeeded'], params['proxyNeeded'], pathOfServerUnderTest)
+										) if params['testAgainstCoreTarball'] else (
+											installServer(phpVersion, db, params['logLevel'], params['useHttps'], params['federatedServerNeeded'], params['proxyNeeded'])
+										)) +
 										(
 											installAndConfigureFederated(ctx, federatedServerVersion, params['federatedPhpVersion'], params['logLevel'], protocol, federatedDb, federationDbSuffix) +
 											owncloudLog('federated', 'federated') if params['federatedServerNeeded'] else []
 										) +
-										installExtraApps(phpVersion, extraAppsDict) +
+										installExtraApps(phpVersion, extraAppsDict, pathOfServerUnderTest) +
 										setupCeph(phpVersion, params['cephS3']) +
 										setupScality(phpVersion, params['scalityS3']) +
 										params['extraSetup'] +
-										fixPermissions(phpVersion, params['federatedServerNeeded']) +
+										fixPermissions(phpVersion, params['federatedServerNeeded'], pathOfServerUnderTest) +
 										waitForServer(phpVersion, params['federatedServerNeeded']) +
 										owncloudLog('server', 'src') +
 									[
@@ -1525,7 +1536,7 @@ def acceptance(ctx):
 										cephService(params['cephS3']) +
 										scalityService(params['scalityS3']) +
 										params['extraServices'] +
-										owncloudService(phpVersion, 'server', '/drone/src', params['useHttps']) +
+										owncloudService(phpVersion, 'server', pathOfServerUnderTest, params['useHttps']) +
 										((
 											owncloudService(params['federatedPhpVersion'], 'federated', '/drone/federated', params['useHttps']) +
 											databaseServiceForFederation(federatedDb, federationDbSuffix)
@@ -1899,10 +1910,10 @@ def cephService(cephS3):
 		}
 	}]
 
-def owncloudService(phpVersion, name = 'server', path = '/drone/src', ssl = True):
+def owncloudService(phpVersion, name = 'server', pathOfServerUnderTest = '/drone/src', ssl = True):
 	if ssl:
 		environment = {
-			'APACHE_WEBROOT': path,
+			'APACHE_WEBROOT': pathOfServerUnderTest,
 			'APACHE_CONFIG_TEMPLATE': 'ssl',
 			'APACHE_SSL_CERT_CN': name,
 			'APACHE_SSL_CERT': '/drone/%s.crt' % name,
@@ -1910,7 +1921,7 @@ def owncloudService(phpVersion, name = 'server', path = '/drone/src', ssl = True
 		}
 	else:
 		environment = {
-			'APACHE_WEBROOT': path
+			'APACHE_WEBROOT': pathOfServerUnderTest
 		}
 
 	return [{
@@ -2195,14 +2206,14 @@ def createShare(phpVersion):
 		]
 	}]
 
-def installExtraApps(phpVersion, extraApps):
+def installExtraApps(phpVersion, extraApps, pathOfServerUnderTest = '/drone/src'):
 	commandArray = []
 	for app, command in extraApps.items():
-		commandArray.append('git clone https://github.com/owncloud/%s.git /drone/src/apps/%s' % (app, app))
+		commandArray.append('git clone https://github.com/owncloud/%s.git %s/apps/%s' % (app, pathOfServerUnderTest, app))
 		if (command != ''):
-			commandArray.append('cd /drone/src/apps/%s' % app)
+			commandArray.append('cd %s/apps/%s' % (pathOfServerUnderTest, app))
 			commandArray.append(command)
-		commandArray.append('cd /drone/src')
+		commandArray.append('cd %s' % pathOfServerUnderTest)
 		commandArray.append('php occ a:l')
 		commandArray.append('php occ a:e %s' % app)
 		commandArray.append('php occ a:l')
@@ -2385,13 +2396,13 @@ def setupScality(phpVersion, scalityS3):
 		] if createExtraBuckets else [])
 	}]
 
-def fixPermissions(phpVersion, federatedServerNeeded):
+def fixPermissions(phpVersion, federatedServerNeeded, pathOfServerUnderTest = '/drone/src'):
 	return [{
 		'name': 'fix-permissions',
 		'image': 'owncloudci/php:%s' % phpVersion,
 		'pull': 'always',
 		'commands': [
-			'chown -R www-data /drone/src'
+			'chown -R www-data %s' % pathOfServerUnderTest
 		] + ([
 			'chown -R www-data /drone/federated'
 		] if federatedServerNeeded else [])
@@ -2425,7 +2436,7 @@ def dependsOn(earlierStages, nextStages):
 		for nextStage in nextStages:
 			nextStage['depends_on'].append(earlierStage['name'])
 
-def installCoreFromTarball(version, db, logLevel = '2', ssl = False, federatedServerNeeded = False, proxyNeeded = False):
+def installCoreFromTarball(version, db, logLevel = '2', ssl = False, federatedServerNeeded = False, proxyNeeded = False, pathOfServerUnderTest = '/drone/core'):
 	host = getDbName(db)
 	dbType = host
 
@@ -2445,7 +2456,7 @@ def installCoreFromTarball(version, db, logLevel = '2', ssl = False, federatedSe
 		},
 		'settings': {
 			'version': version,
-			'core_path': '/drone/src',
+			'core_path': pathOfServerUnderTest,
 			'db_type': dbType,
 			'db_name': database,
 			'db_host': host,
@@ -2454,6 +2465,7 @@ def installCoreFromTarball(version, db, logLevel = '2', ssl = False, federatedSe
 		},
 		'commands': [
 			'bash tests/drone/install-server.sh',
+			'cd %s' % pathOfServerUnderTest,
 			'php occ a:l',
 			'php occ config:system:set trusted_domains 1 --value=server',
 		] + ([
