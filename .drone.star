@@ -1346,7 +1346,7 @@ def acceptance(ctx):
 		'includeKeyInMatrixName': False,
 		'runAllSuites': False,
 		'numberOfParts': 1,
-		'testAgainstCoreTarball': False,
+		'testAgainstCoreTarball': True,
 		'coreTarball': 'daily-master-qa',
 	}
 
