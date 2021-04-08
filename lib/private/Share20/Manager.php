@@ -357,18 +357,25 @@ class Manager implements IManager {
 			$share->getShareOwner() !== $this->userSession->getUser()->getUID()) {
 			// retrieve received share node $shareFileNode being reshared with $share
 			$userFolder = $this->rootFolder->getUserFolder($share->getSharedBy());
-			$shareFileNodes = $userFolder->getById($shareNode->getId(), true);
-			$shareFileNode = $shareFileNodes[0] ?? null;
-			if ($shareFileNode) {
-				$shareFileStorage = $shareFileNode->getStorage();
-				if ($shareFileStorage->instanceOfStorage('OCA\Files_Sharing\External\Storage')) {
+			$shareFileNodes = $userFolder->getById($shareNode->getId(), false);
+
+			// if there are many mount points, take top folder (parent share node) as subfolders
+			// likely contain reduced permissions and are sub-shares
+			\usort($shareFileNodes, function (\OCP\Files\Node $first, \OCP\Files\Node $second) {
+				return \strcmp($first->getPath(), $second->getPath());
+			});
+
+			$parentShareNode = $shareFileNodes[0] ?? null;
+			if ($parentShareNode) {
+				$parentShareFileStorage = $parentShareNode->getStorage();
+				if ($parentShareFileStorage->instanceOfStorage('OCA\Files_Sharing\External\Storage')) {
 					// if $shareFileNode is an incoming federated share, use share node permission directly
 					$maxPermissions = $shareNode->getPermissions();
-				} elseif ($shareFileStorage->instanceOfStorage('OCA\Files_Sharing\SharedStorage')) {
+				} elseif ($parentShareFileStorage->instanceOfStorage('OCA\Files_Sharing\SharedStorage')) {
 					// if $shareFileNode is user/group share, use supershare permissions
-					/** @var \OCA\Files_Sharing\SharedStorage $shareFileStorage */
-					'@phan-var \OCA\Files_Sharing\SharedStorage $shareFileStorage';
-					$parentShare = $shareFileStorage->getShare();
+					/** @var \OCA\Files_Sharing\SharedStorage $parentShareFileStorage */
+					'@phan-var \OCA\Files_Sharing\SharedStorage $parentShareFileStorage';
+					$parentShare = $parentShareFileStorage->getShare();
 					$maxPermissions = $parentShare->getPermissions();
 					$requiredAttributes = $parentShare->getAttributes();
 				}
