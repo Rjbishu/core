@@ -2444,16 +2444,19 @@ def installCoreFromTarball(version, db, logLevel = '2', ssl = False, federatedSe
 	password = getDbPassword(db)
 	database = getDbDatabase(db)
 
+	if host == 'mariadb':
+		dbType = 'mysql'
+
+	if host == 'postgres':
+		dbType = 'pgsql'
+
+	if host == 'oracle':
+		dbType = 'oci'
+
 	return [{
 		'name': 'install-core',
 		'image': 'owncloudci/core',
 		'pull': 'always',
-		'environment': {
-			'DB_TYPE': dbType,
-			'DB_USERNAME': username,
-			'DB_PASSWORD': password,
-			'DB_NAME': database
-		},
 		'settings': {
 			'version': version,
 			'core_path': pathOfServerUnderTest,
@@ -2462,27 +2465,7 @@ def installCoreFromTarball(version, db, logLevel = '2', ssl = False, federatedSe
 			'db_host': host,
 			'db_username': username,
 			'db_password': password
-		},
-		'commands': [
-			'bash tests/drone/install-server.sh',
-			'cd %s' % pathOfServerUnderTest,
-			'php occ a:l',
-			'php occ config:system:set trusted_domains 1 --value=server',
-		] + ([
-			'php occ config:system:set trusted_domains 2 --value=federated'
-		] if federatedServerNeeded else []) + [
-		] + ([
-			'php occ config:system:set trusted_domains 3 --value=proxy'
-		] if proxyNeeded else []) + [
-			'php occ log:manage --level %s' % logLevel,
-			'php occ config:list',
-		] + ([
-			'php occ security:certificates:import /drone/server.crt',
-		] if ssl else []) + ([
-			'php occ security:certificates:import /drone/federated.crt',
-		] if federatedServerNeeded and ssl else []) + [
-			'php occ security:certificates',
-		]
+		}
 	}]
 
 def installFederatedFromTarball(federatedServerVersion, phpVersion, logLevel, protocol, db, dbSuffix = '-federated'):
